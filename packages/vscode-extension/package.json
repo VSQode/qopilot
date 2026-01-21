@@ -1,5 +1,5 @@
 {
-  "name": "@qopilot/vscode-extension",
+  "name": "qopilot",
   "displayName": "Qopilot",
   "description": "Q-System infrastructure: Q-semver identity and session discovery tools",
   "version": "0.1.0",
