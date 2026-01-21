@@ -5,6 +5,8 @@ node_modules/**
 tsconfig.json
 **/*.ts
 **/*.map
+../../**
 ../**
 **/.git/**
 **/package-lock.json
+*.vsix

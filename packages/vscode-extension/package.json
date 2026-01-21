@@ -98,6 +98,58 @@
           },
           "required": ["sessionId", "message"]
         }
+      },
+      {
+        "name": "qopilot_mcp_control",
+        "displayName": "MCP Server Control",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "mcp",
+        "icon": "$(server)",
+        "userDescription": "Control MCP servers (start, stop, restart, list)",
+        "modelDescription": "Control MCP server lifecycle. Actions: 'list' (show all servers and status), 'start' (start a server by name), 'stop' (stop a server), 'restart' (restart a server), 'start-all' (start all servers). Use 'list' first to discover server names. Server names are from mcp.json configuration.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["list", "start", "stop", "restart", "start-all"],
+              "description": "Action to perform"
+            },
+            "serverName": {
+              "type": "string",
+              "description": "Server name (from mcp.json). Required for start/stop/restart."
+            }
+          },
+          "required": ["action"]
+        }
+      },
+      {
+        "name": "qopilot_mcp_output",
+        "displayName": "MCP Server Output",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "mcplog",
+        "icon": "$(output)",
+        "userDescription": "Read MCP server output/error logs",
+        "modelDescription": "Read output from an MCP server's log channel. Useful for diagnosing server startup failures or runtime errors. Use 'list' action first to see available servers, then 'read' with a server name to get its output.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["list", "read", "show"],
+              "description": "Action: 'list' shows servers, 'read' gets log content, 'show' opens the output panel"
+            },
+            "serverName": {
+              "type": "string",
+              "description": "Server name to read logs from"
+            },
+            "lines": {
+              "type": "number",
+              "description": "Number of recent lines to return (default: 50)"
+            }
+          },
+          "required": ["action"]
+        }
       }
     ]
   },

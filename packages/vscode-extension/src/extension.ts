@@ -516,6 +516,17 @@ interface ISendMessageParams {
   message: string;
 }
 
+interface IMcpControlParams {
+  action: 'list' | 'start' | 'stop' | 'restart' | 'start-all';
+  serverName?: string;
+}
+
+interface IMcpOutputParams {
+  action: 'list' | 'read' | 'show';
+  serverName?: string;
+  lines?: number;
+}
+
 class ListSessionsTool implements vscode.LanguageModelTool<IListSessionsParams> {
   async prepareInvocation(
     _options: vscode.LanguageModelToolInvocationPrepareOptions<IListSessionsParams>,
@@ -763,6 +774,335 @@ class SendMessageToSessionTool implements vscode.LanguageModelTool<ISendMessageP
   }
 }
 
+// === MCP CONTROL TOOL ===
+// Uses VS Code's workbench.mcp.* commands to control MCP servers
+
+class McpControlTool implements vscode.LanguageModelTool<IMcpControlParams> {
+  async prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<IMcpControlParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.PreparedToolInvocation> {
+    const { action, serverName } = options.input;
+    return {
+      invocationMessage: `MCP ${action}${serverName ? ` ${serverName}` : ''}...`,
+    };
+  }
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<IMcpControlParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { action, serverName } = options.input;
+    
+    try {
+      // Read MCP configuration to find server names
+      const mcpConfig = await this.readMcpConfig();
+      
+      switch (action) {
+        case 'list': {
+          // List all configured MCP servers
+          const servers = Object.keys(mcpConfig.servers || {});
+          const result = {
+            action: 'list',
+            serverCount: servers.length,
+            servers: servers.map(name => ({
+              name,
+              config: mcpConfig.servers[name],
+            })),
+            note: 'Use start/stop/restart with a serverName to control individual servers.',
+            commands: {
+              startAll: 'workbench.mcp.startServer with "*"',
+              start: 'workbench.mcp.startServer',
+              stop: 'workbench.mcp.stopServer',
+              restart: 'workbench.mcp.restartServer',
+            }
+          };
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify(result, null, 2))
+          ]);
+        }
+        
+        case 'start-all': {
+          // Start all servers using wildcard
+          await vscode.commands.executeCommand('workbench.mcp.startServer', '*');
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify({
+              action: 'start-all',
+              success: true,
+              message: 'Triggered start for all MCP servers',
+            }, null, 2))
+          ]);
+        }
+        
+        case 'start':
+        case 'stop':
+        case 'restart': {
+          if (!serverName) {
+            throw new Error(`serverName is required for ${action} action`);
+          }
+          
+          // Find the server ID - for VS Code MCP, server ID format is typically the server name
+          // We need to match against what's in the mcp.json
+          const servers = Object.keys(mcpConfig.servers || {});
+          if (!servers.includes(serverName)) {
+            throw new Error(`Server "${serverName}" not found in mcp.json. Available: ${servers.join(', ')}`);
+          }
+          
+          // Map action to command
+          const commandMap: Record<string, string> = {
+            'start': 'workbench.mcp.startServer',
+            'stop': 'workbench.mcp.stopServer',
+            'restart': 'workbench.mcp.restartServer',
+          };
+          
+          const command = commandMap[action];
+          
+          // Execute the command
+          // Note: The server ID might be different from the name in some cases
+          // We try the name directly first
+          await vscode.commands.executeCommand(command, serverName);
+          
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify({
+              action,
+              serverName,
+              success: true,
+              command,
+              message: `Executed ${action} for server "${serverName}"`,
+            }, null, 2))
+          ]);
+        }
+        
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      return new vscode.LanguageModelToolResult([
+        new vscode.LanguageModelTextPart(JSON.stringify({
+          action,
+          serverName,
+          success: false,
+          error,
+        }, null, 2))
+      ]);
+    }
+  }
+  
+  private async readMcpConfig(): Promise<{ servers: Record<string, any> }> {
+    // Try to read mcp.json from workspace .vscode folder
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return { servers: {} };
+    }
+    
+    for (const folder of workspaceFolders) {
+      const mcpJsonPath = path.join(folder.uri.fsPath, '.vscode', 'mcp.json');
+      if (fs.existsSync(mcpJsonPath)) {
+        try {
+          const content = fs.readFileSync(mcpJsonPath, 'utf-8');
+          // Handle JSONC (JSON with comments)
+          const cleaned = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+          const parsed = JSON.parse(cleaned);
+          return { servers: parsed.servers || {} };
+        } catch {
+          continue;
+        }
+      }
+    }
+    
+    // Also try user-level mcp.json
+    const appDataPath = getAppDataPath();
+    const userMcpPath = path.join(appDataPath, 'mcp.json');
+    if (fs.existsSync(userMcpPath)) {
+      try {
+        const content = fs.readFileSync(userMcpPath, 'utf-8');
+        const cleaned = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        const parsed = JSON.parse(cleaned);
+        return { servers: parsed.servers || {} };
+      } catch {
+        // Fall through
+      }
+    }
+    
+    return { servers: {} };
+  }
+}
+
+// === MCP OUTPUT TOOL ===
+// Reads MCP server output channels for debugging
+
+class McpOutputTool implements vscode.LanguageModelTool<IMcpOutputParams> {
+  async prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<IMcpOutputParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.PreparedToolInvocation> {
+    const { action, serverName } = options.input;
+    return {
+      invocationMessage: `MCP output ${action}${serverName ? ` for ${serverName}` : ''}...`,
+    };
+  }
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<IMcpOutputParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { action, serverName, lines = 50 } = options.input;
+    
+    try {
+      switch (action) {
+        case 'list': {
+          // List all configured MCP servers that might have output
+          const mcpConfig = await this.readMcpConfig();
+          const servers = Object.keys(mcpConfig.servers || {});
+          
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify({
+              action: 'list',
+              servers,
+              note: 'Use action="show" with serverName to open the output channel, or action="read" to get log content.',
+              limitation: 'VS Code does not expose output channel content to extensions. Use "show" to open the panel visually.',
+            }, null, 2))
+          ]);
+        }
+        
+        case 'show': {
+          if (!serverName) {
+            throw new Error('serverName is required for show action');
+          }
+          
+          // Execute the show output command
+          await vscode.commands.executeCommand('workbench.mcp.showOutput', serverName);
+          
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify({
+              action: 'show',
+              serverName,
+              success: true,
+              message: `Opened output channel for "${serverName}"`,
+              note: 'Output channel is now visible in the Output panel.',
+            }, null, 2))
+          ]);
+        }
+        
+        case 'read': {
+          if (!serverName) {
+            throw new Error('serverName is required for read action');
+          }
+          
+          // Unfortunately, VS Code does not expose output channel content to extensions
+          // We can try to read from the MCP server's log file if it exists
+          const logContent = await this.tryReadMcpLog(serverName, lines);
+          
+          if (logContent) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(JSON.stringify({
+                action: 'read',
+                serverName,
+                success: true,
+                lines: logContent.lines,
+                source: logContent.source,
+                content: logContent.content,
+              }, null, 2))
+            ]);
+          }
+          
+          // Fallback: suggest using show action
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(JSON.stringify({
+              action: 'read',
+              serverName,
+              success: false,
+              error: 'Cannot read output channel content directly',
+              suggestion: 'Use action="show" to open the output panel visually, or check for log files in the server directory.',
+              limitation: 'VS Code does not expose OutputChannel content to extensions. This is a known limitation.',
+            }, null, 2))
+          ]);
+        }
+        
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      return new vscode.LanguageModelToolResult([
+        new vscode.LanguageModelTextPart(JSON.stringify({
+          action,
+          serverName,
+          success: false,
+          error,
+        }, null, 2))
+      ]);
+    }
+  }
+  
+  private async readMcpConfig(): Promise<{ servers: Record<string, any> }> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return { servers: {} };
+    }
+    
+    for (const folder of workspaceFolders) {
+      const mcpJsonPath = path.join(folder.uri.fsPath, '.vscode', 'mcp.json');
+      if (fs.existsSync(mcpJsonPath)) {
+        try {
+          const content = fs.readFileSync(mcpJsonPath, 'utf-8');
+          const cleaned = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+          const parsed = JSON.parse(cleaned);
+          return { servers: parsed.servers || {} };
+        } catch {
+          continue;
+        }
+      }
+    }
+    
+    return { servers: {} };
+  }
+  
+  private async tryReadMcpLog(serverName: string, maxLines: number): Promise<{ lines: number; source: string; content: string } | null> {
+    // Try to find log files in common locations
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) return null;
+    
+    const mcpConfig = await this.readMcpConfig();
+    const serverConfig = mcpConfig.servers[serverName];
+    if (!serverConfig) return null;
+    
+    // If server has args with a path, check for log files there
+    const args = serverConfig.args || [];
+    for (const arg of args) {
+      if (typeof arg === 'string' && arg.includes('/')) {
+        // This might be a path, check parent directory for logs
+        const resolvedArg = arg.replace('${workspaceFolder}', workspaceFolders[0].uri.fsPath);
+        const serverDir = path.dirname(resolvedArg);
+        
+        // Common log file patterns
+        const logPatterns = ['*.log', 'mcp.log', 'server.log', 'output.log', 'debug.log'];
+        
+        for (const pattern of logPatterns) {
+          const logPath = path.join(serverDir, pattern.replace('*', serverName));
+          if (fs.existsSync(logPath)) {
+            try {
+              const content = fs.readFileSync(logPath, 'utf-8');
+              const allLines = content.split('\n');
+              const recentLines = allLines.slice(-maxLines);
+              return {
+                lines: recentLines.length,
+                source: logPath,
+                content: recentLines.join('\n'),
+              };
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
 function registerSessionTools(context: vscode.ExtensionContext) {
   outputChannel.appendLine('Registering Language Model Tools...');
   
@@ -780,6 +1120,16 @@ function registerSessionTools(context: vscode.ExtensionContext) {
     vscode.lm.registerTool('qopilot_send_message', new SendMessageToSessionTool())
   );
   outputChannel.appendLine('  ✓ qopilot_send_message (#sendmsg) [LIMITED - file-based only]');
+  
+  context.subscriptions.push(
+    vscode.lm.registerTool('qopilot_mcp_control', new McpControlTool())
+  );
+  outputChannel.appendLine('  ✓ qopilot_mcp_control (#mcp) - start/stop/restart MCP servers');
+  
+  context.subscriptions.push(
+    vscode.lm.registerTool('qopilot_mcp_output', new McpOutputTool())
+  );
+  outputChannel.appendLine('  ✓ qopilot_mcp_output (#mcplog) - read MCP server output');
   
   outputChannel.appendLine('Language Model Tools registered.');
 }
