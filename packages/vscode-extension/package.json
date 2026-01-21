@@ -1,0 +1,116 @@
+{
+  "name": "@qopilot/vscode-extension",
+  "displayName": "Qopilot",
+  "description": "Q-System infrastructure: Q-semver identity and session discovery tools",
+  "version": "0.1.0",
+  "publisher": "vgm9",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VGM9/qopilot",
+    "directory": "packages/vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": ["AI", "Chat"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "qopilot.attachFile",
+        "title": "Qopilot: Attach File to Chat"
+      },
+      {
+        "command": "qopilot.showLogs",
+        "title": "Qopilot: Show Logs"
+      },
+      {
+        "command": "qopilot.showQSemver",
+        "title": "Qopilot: Show Q-Semver Identity"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "qopilot_list_sessions",
+        "displayName": "List Chat Sessions",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "sessions",
+        "icon": "$(comment-discussion)",
+        "userDescription": "List all chat sessions in the current workspace",
+        "modelDescription": "List all chat sessions stored in VS Code AppData for the current workspace. Returns session IDs, request counts, reboot counts, custom titles, and kairotic Q values. Use to discover existing sessions before attempting inter-session communication.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workspaceHash": {
+              "type": "string",
+              "description": "Optional: specific workspace storage hash. Otherwise uses current workspace."
+            },
+            "includeEmpty": {
+              "type": "boolean",
+              "description": "Include sessions with 0 requests (default: false)"
+            }
+          }
+        }
+      },
+      {
+        "name": "qopilot_get_session",
+        "displayName": "Get Session Details",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "getsession",
+        "icon": "$(eye)",
+        "userDescription": "Get detailed information about a specific chat session",
+        "modelDescription": "Get detailed information about a specific chat session by ID. Can optionally include message history summaries. Searches all workspace storage locations.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "The session UUID to look up"
+            },
+            "includeHistory": {
+              "type": "boolean",
+              "description": "Include message history summaries (default: false)"
+            }
+          },
+          "required": ["sessionId"]
+        }
+      },
+      {
+        "name": "qopilot_send_message",
+        "displayName": "Send Message to Session (Limited)",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "sendmsg",
+        "icon": "$(mail)",
+        "userDescription": "Attempt to send a message to another session (file-based only)",
+        "modelDescription": "Attempt to send a message to another chat session. WARNING: VS Code does not expose an API for direct message injection. This tool writes to a file-based inbox that the target session must be watching. The target agent must implement inbox polling to receive messages. This is NOT a real-time messaging system.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Target session UUID"
+            },
+            "message": {
+              "type": "string",
+              "description": "Message content to send"
+            }
+          },
+          "required": ["sessionId", "message"]
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.99.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
