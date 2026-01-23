@@ -32,6 +32,24 @@
     ],
     "languageModelTools": [
       {
+        "name": "qopilot_get_qsemver",
+        "displayName": "Get Q-Semver Identity",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "qsemver",
+        "icon": "$(symbol-number)",
+        "userDescription": "Get your Q-Semver identity (e.g., 0.6.0). Shows who you are in the Q-number system.",
+        "modelDescription": "Get your Q-Semver identity showing both Chronos Q (birth order) and Kairos Q (role assignment). Returns your position in workspace session chronology and role designation. Essential for self-identification.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "includeDetails": {
+              "type": "boolean",
+              "description": "Include full session chronology and storage details (default: false)"
+            }
+          }
+        }
+      },
+      {
         "name": "qopilot_list_sessions",
         "displayName": "List Chat Sessions",
         "canBeReferencedInPrompt": true,

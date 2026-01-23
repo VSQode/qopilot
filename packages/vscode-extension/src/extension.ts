@@ -527,6 +527,67 @@ interface IMcpOutputParams {
   lines?: number;
 }
 
+interface IQSemverParams {
+  includeDetails?: boolean;
+}
+
+class QSemverTool implements vscode.LanguageModelTool<IQSemverParams> {
+  async prepareInvocation(
+    _options: vscode.LanguageModelToolInvocationPrepareOptions<IQSemverParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.PreparedToolInvocation> {
+    return {
+      invocationMessage: 'Computing Q-Semver identity...',
+    };
+  }
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<IQSemverParams>,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.LanguageModelToolResult> {
+    try {
+      const includeDetails = options.input.includeDetails ?? false;
+      const qInfo = await computeQSemver();
+      
+      const summary = {
+        identity: {
+          sessionId: qInfo.sessionId,
+          chatSessionId: qInfo.chatSessionId,
+          machineId: qInfo.machineId
+        },
+        chronosQ: {
+          qSemver: qInfo.qSemver,
+          meaning: `${qInfo.chronosQ}${qInfo.chronosQ === 1 ? 'st' : qInfo.chronosQ === 2 ? 'nd' : qInfo.chronosQ === 3 ? 'rd' : 'th'} session created, ${qInfo.patchVersion} reboot${qInfo.patchVersion === 1 ? '' : 's'}`,
+          birthOrder: qInfo.chronosQ,
+          rebootCount: qInfo.patchVersion
+        },
+        kairosQ: qInfo.kairosQ !== null ? {
+          qSemver: qInfo.qSemverKairos,
+          role: qInfo.roleName,
+          roleNumber: qInfo.kairosQ,
+          tenureReboots: qInfo.patchVersion
+        } : null,
+        workspace: {
+          type: qInfo.workspaceType,
+          isMultiRoot: qInfo.isMultiRoot
+        }
+      };
+      
+      const result = includeDetails ? {
+        summary,
+        details: qInfo.details
+      } : summary;
+      
+      return new vscode.LanguageModelToolResult([
+        new vscode.LanguageModelTextPart(JSON.stringify(result, null, 2))
+      ]);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      throw new Error(`Failed to compute Q-Semver: ${error}`);
+    }
+  }
+}
+
 class ListSessionsTool implements vscode.LanguageModelTool<IListSessionsParams> {
   async prepareInvocation(
     _options: vscode.LanguageModelToolInvocationPrepareOptions<IListSessionsParams>,
@@ -1105,6 +1166,11 @@ class McpOutputTool implements vscode.LanguageModelTool<IMcpOutputParams> {
 
 function registerSessionTools(context: vscode.ExtensionContext) {
   outputChannel.appendLine('Registering Language Model Tools...');
+  
+  context.subscriptions.push(
+    vscode.lm.registerTool('qopilot_get_qsemver', new QSemverTool())
+  );
+  outputChannel.appendLine('  ✓ qopilot_get_qsemver (#qsemver)');  
   
   context.subscriptions.push(
     vscode.lm.registerTool('qopilot_list_sessions', new ListSessionsTool())
