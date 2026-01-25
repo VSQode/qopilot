@@ -2,7 +2,7 @@
   "name": "qopilot",
   "displayName": "Qopilot",
   "description": "Q-System infrastructure: Q-semver identity and session discovery tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "vgm9",
   "repository": {
     "type": "git",
@@ -67,6 +67,14 @@
             "includeEmpty": {
               "type": "boolean",
               "description": "Include sessions with 0 requests (default: false)"
+            },
+            "fromIndex": {
+              "type": "number",
+              "description": "Starting index for pagination (default: 0)"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max sessions to return (default: 20, max: 100)"
             }
           }
         }
@@ -78,7 +86,7 @@
         "toolReferenceName": "getsession",
         "icon": "$(eye)",
         "userDescription": "Get detailed information about a specific chat session",
-        "modelDescription": "Get detailed information about a specific chat session by ID. Can optionally include message history summaries. Searches all workspace storage locations.",
+        "modelDescription": "Get detailed information about a specific chat session by ID. Can optionally include message history with SAFE PAGINATION. Searches all workspace storage locations. WARNING: includeHistory without fromIndex/limit defaults to first 10 messages.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -88,7 +96,15 @@
             },
             "includeHistory": {
               "type": "boolean",
-              "description": "Include message history summaries (default: false)"
+              "description": "Include message history summaries (default: false). Use with fromIndex and limit."
+            },
+            "fromIndex": {
+              "type": "number",
+              "description": "Starting message index. Use negative values like -5 for 'last 5 messages'. (default: 0)"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max messages to return (default: 10, max: 50)"
             }
           },
           "required": ["sessionId"]
@@ -168,6 +184,78 @@
           },
           "required": ["action"]
         }
+      },
+      {
+        "name": "qopilot_attach_file",
+        "displayName": "Attach File to Vision",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "attach",
+        "icon": "$(file-media)",
+        "userDescription": "Attach an image file so the LLM can see it",
+        "modelDescription": "Read an image file from disk and return it as image data that the LLM can see. Use this to programmatically attach images (e.g., rotated versions from RAAS) to your vision context. Supports JPEG, PNG, GIF, WebP, BMP.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to the image file"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "qopilot_execute_command",
+        "displayName": "Execute VS Code Command",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "cmd",
+        "icon": "$(terminal)",
+        "userDescription": "Execute a VS Code workbench command",
+        "modelDescription": "Execute any VS Code command by ID. Use this to trigger workbench actions like 'workbench.action.reloadWindow', 'workbench.action.chat.attachFile', etc. Returns the command result if any. UI commands (terminal.killAll, reloadWindow, etc.) auto-detect as fire-and-forget to prevent freezing.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The command ID to execute (e.g., 'workbench.action.reloadWindow')"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional arguments to pass to the command"
+            },
+            "fireAndForget": {
+              "type": "boolean",
+              "description": "Don't wait for completion. Auto-detected for UI commands like terminal.killAll. Use true for commands that may freeze or show dialogs."
+            }
+          },
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "qopilot_read_output",
+        "displayName": "Read Output Channel",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "output",
+        "icon": "$(output)",
+        "userDescription": "Read content from any VS Code output channel",
+        "modelDescription": "Read the content of any VS Code output channel by name. Reads from VS Code's log files. Use channelName='*' or 'list' to see all available channels. Useful for debugging extensions, MCP servers, and other tools that write to output channels.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "channelName": {
+              "type": "string",
+              "description": "Name of the output channel to read (e.g., 'Qopilot', 'Prettier', 'GitHub Copilot Chat'). Use '*' to list all available channels."
+            },
+            "lines": {
+              "type": "number",
+              "description": "Number of recent lines to return (default: 100)"
+            }
+          },
+          "required": ["channelName"]
+        }
       }
     ]
   },
@@ -175,7 +263,10 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package --allow-missing-repository"
+    "package": "npx vsce package --allow-missing-repository -o qopilot.vsix",
+    "validate": "node scripts/validate.js",
+    "deploy": "npm run compile && npm run validate && npm run package && npm run install-ext",
+    "install-ext": "code-insiders --install-extension qopilot.vsix --force"
   },
   "devDependencies": {
     "@types/vscode": "^1.99.0",

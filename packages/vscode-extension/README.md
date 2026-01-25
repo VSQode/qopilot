@@ -1,39 +1,81 @@
-# Qopilot
+# Qopilot v0.2.0
 
-Utility tools for AI agents in the Q-number system.
+Q-System infrastructure: Q-semver identity and session discovery tools for AI agents.
 
 ## Installation
 
 ```bash
-cd 00_CC0/04_extensions/qopilot
+cd monorepos/qopilot/packages/vscode-extension
 npm install
-npm run compile
-npm run package
-code-insiders --install-extension qopilot-0.0.1.vsix
+npm run deploy  # Compiles, packages, and installs
 ```
 
-## Features
+Or manually:
+```bash
+npm run compile
+npm run package
+code-insiders --install-extension qopilot.vsix --force
+```
 
-### Commands
-- **Qopilot: Attach File to Chat** — Attach any file to the current chat context
+## LLM Tools
 
-### MCP Tools (when MCP is available)
-- `qopilot_attach_file` — Programmatically attach files
-- `qopilot_info` — Get Qopilot status
+### Identity & Sessions
+| Tool | Description |
+|------|-------------|
+| `qopilot_get_qsemver` | Get your Q-Semver identity (CQ birth order + KQ role) |
+| `qopilot_list_sessions` | List chat sessions with pagination (default 20, max 100) |
+| `qopilot_get_session` | Get session details with message history (default 10, max 50) |
+| `qopilot_send_message` | Inter-session messaging (file-based inbox) |
 
-## For Q-Agents
+### MCP Server Control
+| Tool | Description |
+|------|-------------|
+| `qopilot_mcp_control` | Start, stop, restart MCP servers |
+| `qopilot_mcp_output` | Read MCP server logs |
 
-This extension provides infrastructure for agents in the Q-number system:
-- Attach identity files (AGENTS.md) to chat context
-- Future: Quest tracking, session identification, sibling discovery
+### Utilities
+| Tool | Description |
+|------|-------------|
+| `qopilot_attach_file` | Attach images for vision context |
+| `qopilot_execute_command` | Execute VS Code commands |
+| `qopilot_read_output` | Read output channels |
+
+## Safe API Design (v0.2.0)
+
+All tools that return collections have **bounded pagination**:
+
+```javascript
+// GOOD: Get last 5 messages
+qopilot_get_session({ sessionId: "...", includeHistory: true, fromIndex: -5, limit: 5 })
+
+// GOOD: Paginate through sessions
+qopilot_list_sessions({ fromIndex: 0, limit: 10 })  // First page
+qopilot_list_sessions({ fromIndex: 10, limit: 10 }) // Second page
+
+// SAFE: Defaults to 10 messages (won't kill context)
+qopilot_get_session({ sessionId: "...", includeHistory: true })
+```
+
+### Safety Limits
+| Tool | Default | Max |
+|------|---------|-----|
+| `qopilot_get_session` | 10 messages | 50 |
+| `qopilot_list_sessions` | 20 sessions | 100 |
+| `qopilot_read_output` | 100 lines | 200 |
+| `qopilot_mcp_output` | 50 lines | — |
+
+## Commands
+
+- **Qopilot: Show Q-Semver Identity** — Display your Q-identity
+- **Qopilot: Attach File to Chat** — Attach file to chat context
+- **Qopilot: Show Logs** — Open Qopilot output channel
 
 ## Development
 
 ```bash
 npm run watch    # Compile on change
 npm run package  # Create .vsix
+npm run deploy   # Full build + install
 ```
 
-## Version History
-
-- 0.0.1 — Initial release: file attachment
+See [CHANGELOG.md](CHANGELOG.md) for version history.
