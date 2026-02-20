@@ -74,8 +74,10 @@ export class GetSessionTool implements vscode.LanguageModelTool<IGetSessionParam
       // See: ___/protocols/REBOOT_DEFINITION.md for canonical specification
       let rebootCount = 0;
       for (const req of requests) {
+        if (!req) continue;  // guard sparse array slots from JSONL patch walk
         for (const resp of (req.response || [])) {
-          if (resp.kind === 'progressTaskSerialized') {
+          // Support both pre-June 2025 (progressTask) and current (progressTaskSerialized)
+          if (resp.kind === 'progressTaskSerialized' || resp.kind === 'progressTask') {
             const content = resp.content || {};
             if (content.value === 'Summarized conversation history') {
               rebootCount++;

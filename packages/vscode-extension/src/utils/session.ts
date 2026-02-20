@@ -138,8 +138,10 @@ export function readSessions(appDataPath: string, hash: string): SessionInfo[] {
       // TODO: Also check 'progressTask' for pre-June 2025 sessions (THESEUS Prime era)
       let rebootCount = 0;
       for (const req of requests) {
+        if (!req) continue;  // guard sparse array slots from JSONL patch walk
         for (const resp of (req.response || [])) {
-          if (resp.kind === 'progressTaskSerialized') {
+          // Support both pre-June 2025 (progressTask) and current (progressTaskSerialized)
+          if (resp.kind === 'progressTaskSerialized' || resp.kind === 'progressTask') {
             const content = resp.content || {};
             if (content.value === 'Summarized conversation history') {
               rebootCount++;
@@ -150,8 +152,9 @@ export function readSessions(appDataPath: string, hash: string): SessionInfo[] {
       
       // Get first message time
       let firstMessageTime = data.creationDate || 0;
-      if (requests.length > 0 && requests[0].timestamp) {
-        firstMessageTime = requests[0].timestamp;
+      const firstReq = requests.find((r: any) => r != null);
+      if (firstReq?.timestamp) {
+        firstMessageTime = firstReq.timestamp;
       }
       
       // Get file modification time to help identify current session
