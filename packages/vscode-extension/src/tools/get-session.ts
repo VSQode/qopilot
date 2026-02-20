@@ -133,16 +133,19 @@ export class GetSessionTool implements vscode.LanguageModelTool<IGetSessionParam
         output.pagination = pagination;
         
         // Map only the sliced messages
-        output.history = slice.map((req: any, i: number) => {
-          const actualIndex = fromIndex + i;
-          return {
-            index: actualIndex,
-            timestamp: req.timestamp ? new Date(req.timestamp).toISOString() : null,
-            message: req.message?.text?.slice(0, 200) + (req.message?.text?.length > 200 ? '...' : ''),
-            hasResponse: (req.response || []).length > 0,
-            responseTypes: [...new Set((req.response || []).map((r: any) => r.kind))],
-          };
-        });
+        output.history = slice
+          .map((req: any, i: number) => {
+            if (!req) return null;  // guard sparse array slots
+            const actualIndex = fromIndex + i;
+            return {
+              index: actualIndex,
+              timestamp: req.timestamp ? new Date(req.timestamp).toISOString() : null,
+              message: req.message?.text?.slice(0, 200) + (req.message?.text?.length > 200 ? '...' : ''),
+              hasResponse: (req.response || []).length > 0,
+              responseTypes: [...new Set((req.response || []).map((r: any) => r.kind))],
+            };
+          })
+          .filter((r: any) => r !== null);
         
         // Add navigation hints for agents
         output.navigation = {
