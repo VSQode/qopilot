@@ -55,24 +55,81 @@ export function getRoleName(kairosQ: number | null): string | null {
 }
 
 /**
+ * Parse a chat session from either .json (monolithic) or .jsonl (snapshot+patches) format.
+ * Returns the session data object or null on failure.
+ */
+export function parseSessionFile(filePath: string): any | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8').trimEnd();
+
+    if (filePath.endsWith('.jsonl')) {
+      // JSONL: line 1 is kind:0 full snapshot, rest are kind:1 patches
+      const lines = raw.split('\n').filter(l => l.trim());
+      if (lines.length === 0) return null;
+
+      const first = JSON.parse(lines[0]);
+      if (first.kind !== 0) return null;
+      let data = first.v;
+
+      for (let i = 1; i < lines.length; i++) {
+        const patch = JSON.parse(lines[i]);
+        if (patch.kind !== 1 || !Array.isArray(patch.k)) continue;
+        // Apply patch: walk the key path, set the leaf
+        const keys: string[] = patch.k;
+        let obj = data;
+        for (let j = 0; j < keys.length - 1; j++) {
+          const k = keys[j];
+          if (obj[k] === undefined || obj[k] === null) {
+            obj[k] = typeof keys[j + 1] === 'number' ? [] : {};
+          }
+          obj = obj[k];
+        }
+        obj[keys[keys.length - 1]] = patch.v;
+      }
+      return data;
+    } else {
+      return JSON.parse(raw);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read sessions from a workspace storage hash
  */
 export function readSessions(appDataPath: string, hash: string): SessionInfo[] {
   const sessionsDir = path.join(appDataPath, 'workspaceStorage', hash, 'chatSessions');
-  
+
   if (!fs.existsSync(sessionsDir)) {
     return [];
   }
-  
+
   const sessions: SessionInfo[] = [];
-  
-  for (const file of fs.readdirSync(sessionsDir)) {
-    if (!file.endsWith('.json')) continue;
-    
+  const seenIds = new Set<string>();
+
+  // Sort so .json comes before .jsonl — .jsonl wins if both exist (dedup below)
+  const files = fs.readdirSync(sessionsDir)
+    .filter(f => f.endsWith('.json') || f.endsWith('.jsonl'))
+    .sort();
+
+  for (const file of files) {
+    if (!file.endsWith('.json') && !file.endsWith('.jsonl')) continue;
     try {
       const filePath = path.join(sessionsDir, file);
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const data = parseSessionFile(filePath);
+      if (!data) continue;
       const requests = data.requests || [];
+
+      // Deduplicate: if we already have this session ID (from .json), the .jsonl version replaces it
+      const rawId = file.endsWith('.jsonl') ? file.replace('.jsonl', '') : file.replace('.json', '');
+      const sessionId = data.sessionId || rawId;
+      const existingIdx = sessions.findIndex(s => s.id === sessionId);
+      if (existingIdx !== -1) {
+        // .jsonl always supersedes .json (sorted order ensures .json was inserted first)
+        sessions.splice(existingIdx, 1);
+        seenIds.delete(sessionId);
+      }
       
       // Count ONLY summarizer-full events (true reboots)
       // See: ___/protocols/REBOOT_DEFINITION.md for canonical specification
@@ -95,8 +152,6 @@ export function readSessions(appDataPath: string, hash: string): SessionInfo[] {
       if (requests.length > 0 && requests[0].timestamp) {
         firstMessageTime = requests[0].timestamp;
       }
-      
-      const sessionId = data.sessionId || file.replace('.json', '');
       
       // Get file modification time to help identify current session
       const stats = fs.statSync(filePath);
@@ -121,6 +176,7 @@ export function readSessions(appDataPath: string, hash: string): SessionInfo[] {
         roleName,
         questEmoji
       });
+      seenIds.add(sessionId);
     } catch {
       continue;
     }

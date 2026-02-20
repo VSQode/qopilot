@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IGetSessionParams, PaginationInfo, SAFETY_LIMITS } from '../types';
-import { getAppDataPath } from '../utils';
+import { getAppDataPath, parseSessionFile } from '../utils';
 
 export class GetSessionTool implements vscode.LanguageModelTool<IGetSessionParams> {
   async prepareInvocation(
@@ -42,17 +42,26 @@ export class GetSessionTool implements vscode.LanguageModelTool<IGetSessionParam
       if (fs.existsSync(storageBase)) {
         for (const hash of fs.readdirSync(storageBase)) {
           const sessionsDir = path.join(storageBase, hash, 'chatSessions');
-          const sessionFile = path.join(sessionsDir, `${sessionId}.json`);
-          
-          if (fs.existsSync(sessionFile)) {
-            sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
-            foundHash = hash;
-            sessionPath = sessionFile;
-            break;
+          // Try .jsonl first (current format), then .json (legacy)
+          const candidates = [
+            path.join(sessionsDir, `${sessionId}.jsonl`),
+            path.join(sessionsDir, `${sessionId}.json`),
+          ];
+
+          for (const candidate of candidates) {
+            if (fs.existsSync(candidate)) {
+              sessionData = parseSessionFile(candidate);
+              if (sessionData) {
+                foundHash = hash;
+                sessionPath = candidate;
+                break;
+              }
+            }
           }
+          if (sessionData) break;
         }
       }
-      
+
       if (!sessionData) {
         throw new Error(`Session not found: ${sessionId}`);
       }
