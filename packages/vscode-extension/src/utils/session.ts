@@ -75,8 +75,9 @@ export function parseSessionFile(filePath: string): any | null {
         const patch = JSON.parse(lines[i]);
         if (patch.kind !== 1 || !Array.isArray(patch.k)) continue;
         // Apply patch: walk the key path, set the leaf
-        const keys: string[] = patch.k;
-        let obj = data;
+        // k entries can be strings (object keys) or numbers (array indices)
+        const keys: (string | number)[] = patch.k;
+        let obj: any = data;
         for (let j = 0; j < keys.length - 1; j++) {
           const k = keys[j];
           if (obj[k] === undefined || obj[k] === null) {
