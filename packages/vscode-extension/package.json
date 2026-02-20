@@ -2,7 +2,7 @@
   "name": "qopilot",
   "displayName": "Qopilot",
   "description": "Q-System infrastructure: Q-semver identity and session discovery tools",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "vgm9",
   "repository": {
     "type": "git",

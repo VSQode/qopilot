@@ -2,6 +2,33 @@
 
 All notable changes to the Qopilot extension will be documented in this file.
 
+## [0.3.0] - 2026-02-19
+
+### Fixed
+
+#### JSONL format support (VS Code 1.109+ compatibility)
+- **`parseSessionFile()`** — unified parser handling both `.json` (monolithic) and `.jsonl` (snapshot+patches)
+- JSONL: `kind=0` line is the full snapshot; `kind=1` lines are patches applied via key-path walk
+- Key-path types correctly typed as `(string | number)[]` — array indices are integers, not strings
+- **Sparse array guard** — JSONL patch walk can create sparse request arrays; `if (!req) continue` added in all iteration loops
+- **Pre-June 2025 legacy format** — `progressTask` kind now counted in addition to `progressTaskSerialized` (resolves THESEUS Prime era reboot under-count)
+
+#### `readSessions()` improvements
+- Accepts both `.json` and `.jsonl` extensions
+- Deduplication: `.jsonl` takes precedence over `.json` for the same session ID
+- `firstMessageTime` now uses `Array.find` to skip sparse slots
+
+#### `qopilot_get_session`
+- Tries `.jsonl` before `.json` when locating a session by ID
+- Uses `parseSessionFile` for both formats
+
+### Added
+
+#### `qopilot_get_qsemver` — minimal mode
+- New `minimal: boolean` parameter
+- When `true`, returns only `{ chatSessionId, rebootCount, qSemver }` (~30 tokens)
+- Designed for agent wake-up without spending context budget
+
 ## [0.2.0] - 2026-01-25
 
 ### ⚠️ BREAKING CHANGES
