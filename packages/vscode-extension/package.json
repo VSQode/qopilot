@@ -45,6 +45,10 @@
             "includeDetails": {
               "type": "boolean",
               "description": "Include full session chronology and storage details (default: false)"
+            },
+            "minimal": {
+              "type": "boolean",
+              "description": "Return only chatSessionId, rebootCount, qSemver — under 50 tokens. Use on wake to confirm identity without spending context budget."
             }
           }
         }

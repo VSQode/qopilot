@@ -148,7 +148,20 @@ export class QSemverTool implements vscode.LanguageModelTool<IQSemverParams> {
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       const includeDetails = options.input.includeDetails ?? false;
+      const minimal = options.input.minimal ?? false;
       const qInfo = await computeQSemver();
+      
+      // Minimal mode: just what an agent needs on wake (< 50 tokens)
+      if (minimal) {
+        const result = {
+          chatSessionId: qInfo.chatSessionId,
+          rebootCount: qInfo.patchVersion,
+          qSemver: qInfo.qSemver,
+        };
+        return new vscode.LanguageModelToolResult([
+          new vscode.LanguageModelTextPart(JSON.stringify(result))
+        ]);
+      }
       
       const summary = {
         identity: {

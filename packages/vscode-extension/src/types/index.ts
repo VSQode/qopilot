@@ -52,6 +52,7 @@ export interface SessionInfo {
 
 export interface IQSemverParams {
   includeDetails?: boolean;
+  minimal?: boolean;  // Return only chatSessionId, rebootCount, qSemver (< 50 tokens)
 }
 
 export interface IListSessionsParams {
